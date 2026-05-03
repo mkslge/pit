@@ -145,47 +145,86 @@ Verify:
 Explain the Git commands used and why.
 ```
 
-## Prompt 6: Real Codex Source Investigation
+## Prompt 6: Codex Source Adapter
 
 ```text
-Read AGENTS.md, PLAN.md, and the current implementation. Do not implement the parser yet.
+Read AGENTS.md, PLAN.md, and the current implementation. Implement Phase 6 only.
 
-Investigate the local Codex prompt/transcript storage format on this machine.
+Add the real Codex prompt source adapter using the local Codex transcript format already investigated.
 
-Goals:
-- locate likely Codex transcript/history files
-- determine whether the format is JSON, JSONL, SQLite, or something else
-- determine whether user prompts are distinguishable from assistant responses and tool output
-- determine whether stable prompt IDs exist
-- determine whether transcripts can be associated with the current repo
-
-Do not expose private prompt contents in the final response. Summarize file locations, schemas, and fields safely.
-
-Update PLAN.md if the real findings change the Codex source design.
-```
-
-## Prompt 7: Codex Source Adapter
-
-```text
-Read AGENTS.md, PLAN.md, and the Codex source investigation notes. Implement Phase 6 only.
-
-Add the real Codex prompt source adapter.
+Known Codex storage findings:
+- full transcripts are JSONL files under ~/.codex/sessions/YYYY/MM/DD/
+- transcript filenames look like rollout-<timestamp>-<session-id>.jsonl
+- each JSONL row has top-level keys like timestamp, type, and payload
+- the first row is usually type = session_meta
+- session_meta.payload includes id, cwd, timestamp, source, model_provider, cli_version, and sometimes git
+- repo association should use session_meta.payload.cwd and compare it to the current Git repo root
+- actual user-entered prompts are event rows where payload.type == "user_message"
+- user_message payloads include fields such as message, text_elements, images, and local_images
+- response_item rows with payload.type == "message" and payload.role == "user" also exist, but treat them as model-facing/context records for now, not canonical prompt events
+- assistant/tool output must not be captured for the MVP
+- assistant records include payload.role == "assistant" or payload.type == "agent_message"
+- tool records include function_call, function_call_output, custom_tool_call, custom_tool_call_output, exec_command_end, patch_apply_end, and similar payload types
+- stable per-prompt IDs do not appear to exist in Codex transcript rows
+- derive prompt IDs deterministically from session id, timestamp, content hash, and event position/line number
+- ~/.codex/history.jsonl exists but is small/legacy/summary-like and should not be the primary source
+- ~/.codex/session_index.jsonl exists but does not include cwd, so it is not sufficient by itself for repo-scoped capture
+- ~/.codex/state_5.sqlite has a threads table with rollout_path and cwd and may be useful later as an index, but do not depend on SQLite for this MVP adapter
 
 Requirements:
-- parse the real Codex transcript/history format
-- extract only user prompts
-- include timestamp, text, and a stable prompt id if available
-- if no stable id exists, derive one deterministically from timestamp plus content hash
-- avoid capturing prompts from unrelated repos if the source format gives enough context
-- keep fixture source tests working
-- add sanitized test fixtures matching the real Codex format
+- implement prompt_source.type = "codex"
+- default new .pit/config.json should use:
+  {
+    "version": 1,
+    "prompt_source": {
+      "type": "codex",
+      "path": "~/.codex/sessions"
+    }
+  }
+- parse Codex transcript JSONL files recursively below the configured sessions root
+- extract only payload.type == "user_message" events
+- prompt text should come from payload.message when it is a string, with payload.text_elements as a fallback
+- include timestamp, text, and a deterministic prompt id
+- derive IDs from session id, timestamp, content hash, and line number/event position
+- ignore transcripts whose session_meta.payload.cwd does not match the current Git repo root
+- ignore transcripts that do not have enough cwd metadata to safely associate with the repo
+- do not capture assistant responses, tool calls, shell output, or model-facing response_item user records
+- keep the fixture source working unchanged
+- add sanitized Codex-style JSONL fixtures under testdata/codex_sessions or equivalent
+- include at least one matching-repo transcript and one unrelated-repo transcript in fixtures
+- make pit status count uncaptured prompts for the configured source
 
 After coding, test:
-- pit status counts uncaptured Codex prompts
+- pit status counts uncaptured Codex prompts from sanitized fixtures
 - pit capture writes a session from Codex prompts
-- normal git commit attaches Codex prompts without pit prompt
+- normal git commit attaches Codex prompts without any pit prompt command
+- unrelated-repo fixture prompts are not captured
+- assistant/tool/model-facing records are not captured
+- fixture source still works
 
-Explain privacy assumptions and any remaining limitations.
+Explain privacy assumptions and remaining limitations. Do not expose private local prompt contents in the final response.
+```
+
+## Prompt 7: Existing Config Migration and Source UX
+
+```text
+Read AGENTS.md, PLAN.md, and the current implementation. Implement only the source UX/migration cleanup after the Codex adapter.
+
+The real Codex source path is ~/.codex/sessions. Older local .pit/config.json files may still point at ~/.codex/history or ~/.codex/history.jsonl.
+
+Requirements:
+- make pit status and pit capture fail with an actionable message if prompt_source.type = codex points at the old history path
+- either update pit init to preserve existing config but warn clearly about old Codex paths, or add a small repair path that rewrites old Codex history paths to ~/.codex/sessions
+- do not overwrite unrelated custom config
+- document the expected Codex config shape
+- keep fixture configs working
+
+After coding, test:
+- existing .pit/config.json with ~/.codex/history gives a clear fix or is safely migrated
+- .pit/config.json with ~/.codex/sessions works
+- fixture source still works
+
+Explain the migration behavior and why it avoids surprising users.
 ```
 
 ## Prompt 8: MVP Polish Pass
@@ -203,6 +242,8 @@ Check:
 - repeated pit init is idempotent
 - .pit/state.json is ignored
 - .pit/config.json and .pit/sessions/*.json are committed
+- default Codex source points at ~/.codex/sessions, not ~/.codex/history
+- Codex capture filters by repo cwd and skips assistant/tool output
 - README or docs explain the exact MVP flow
 
 Run the full test suite and a manual smoke test in a temporary Git repo.

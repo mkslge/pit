@@ -1,0 +1,5 @@
+{"timestamp":"2026-05-03T10:00:00.000Z","type":"session_meta","payload":{"id":"00000000-0000-0000-0000-000000000001","timestamp":"2026-05-03T10:00:00.000Z","cwd":"/tmp/pit-codex-fixture","source":"vscode","model_provider":"openai","cli_version":"0.0.0"}}
+{"timestamp":"2026-05-03T10:00:01.000Z","type":"event_msg","payload":{"type":"user_message","message":"Implement sanitized fixture prompt one","text_elements":["Implement sanitized fixture prompt one"],"images":[],"local_images":[]}}
+{"timestamp":"2026-05-03T10:00:02.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Sanitized assistant response that should not be captured."}]}}
+{"timestamp":"2026-05-03T10:00:03.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{}","call_id":"call_sanitized"}}
+{"timestamp":"2026-05-03T10:00:04.000Z","type":"event_msg","payload":{"type":"user_message","message":"Add sanitized tests for prompt capture","text_elements":["Add sanitized tests for prompt capture"],"images":[],"local_images":[]}}

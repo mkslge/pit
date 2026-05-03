@@ -326,6 +326,65 @@ Required investigation:
 
 Do not guess the final parser before checking the real source format.
 
+Findings from this machine:
+
+- Codex writes per-session transcript files under `~/.codex/sessions/YYYY/MM/DD/`.
+- Transcript files are JSONL event streams named like
+  `rollout-<timestamp>-<session-id>.jsonl`.
+- Each transcript row is a JSON object with top-level keys such as `timestamp`,
+  `type`, and `payload`.
+- The first transcript row is `type = "session_meta"` and its payload includes
+  fields such as `id`, `timestamp`, `cwd`, `source`, `model_provider`,
+  `cli_version`, and sometimes `git`.
+- User input is distinguishable from assistant/tool output:
+  - `payload.type = "user_message"` appears on event rows and contains user input
+    fields such as `message`, `text_elements`, `images`, and `local_images`.
+  - `payload.type = "message"` with `payload.role = "user"` also appears as a
+    response item representation.
+  - Assistant output appears as `payload.role = "assistant"` or
+    `payload.type = "agent_message"`.
+  - Tool activity appears as payload types such as `function_call`,
+    `function_call_output`, `custom_tool_call`, `custom_tool_call_output`,
+    `exec_command_end`, and `patch_apply_end`.
+- Prompt events do not appear to have a dedicated stable prompt ID field. The
+  Codex source adapter should derive a stable ID from transcript identity plus
+  event position and/or timestamp, for example
+  `<session-id>:<line-number>:<timestamp>`.
+- Transcripts can be associated with a repo through `session_meta.payload.cwd`.
+  The local SQLite state database also has a `threads` table with `id`,
+  `rollout_path`, `cwd`, `created_at`, `updated_at`, `source`,
+  `model_provider`, and Git metadata columns. This is useful as an index for
+  finding transcript files for a repo, but the transcript JSONL files remain the
+  better source of ordered prompt events.
+- `~/.codex/history.jsonl` exists and is JSONL with `session_id`, `ts`, and
+  `text`, but it appears to be a small legacy or summary file and should not be
+  the primary MVP source.
+- `~/.codex/session_index.jsonl` exists and is JSONL with `id`, `thread_name`,
+  and `updated_at`, but it does not include repo `cwd`, so it is not sufficient
+  by itself for repo-scoped capture.
+
+Codex source design update:
+
+- Implement the Codex MVP adapter against the per-session JSONL transcripts.
+- Config should point at a sessions root, for example:
+
+```json
+{
+  "version": 1,
+  "prompt_source": {
+    "type": "codex",
+    "path": "~/.codex/sessions"
+  }
+}
+```
+
+- The adapter should scan transcript JSONL files, keep only sessions whose
+  `session_meta.payload.cwd` matches the current Git repo root, extract
+  user-authored prompt events, derive stable prompt IDs, and sort prompts by
+  transcript timestamp/event order.
+- Avoid storing assistant responses, tool output, and shell output in MVP
+  session files unless the product scope is deliberately expanded.
+
 Development fallback:
 
 - Add a fixture/file prompt source for tests, for example:
