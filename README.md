@@ -13,7 +13,6 @@ git commit -m "..."
 pit show HEAD
 ```
 
-There is no `pit start`, `pit prompt`, or `pit commit`. Keep using normal Git commands.
 
 ## Install Locally
 
@@ -52,6 +51,14 @@ Ignored local state:
 
 The hook files contain a clearly marked pit block and preserve any existing hook content outside that block.
 
+When hooks are installed, pit writes the most stable command it can find:
+
+- if `pit init` was run through an executable path, such as an installed virtualenv script or `./pit`, the hook stores that absolute path
+- otherwise, if `pit` is discoverable on `PATH`, the hook stores that absolute path
+- as a final fallback, the hook stores `pit hook ...` and relies on `pit` being on `PATH` when Git runs hooks
+
+Hook commands are POSIX-shell quoted. This MVP assumes Git runs hooks with `/bin/sh`, which is the standard local hook behavior on macOS and Linux.
+
 ## Codex Source
 
 The default MVP source is Codex local transcript JSONL files:
@@ -79,6 +86,16 @@ pit status
 ```
 
 Shows initialization state, prompt source, uncaptured prompt count, and local paths.
+It also summarizes whether the installed Git hooks look healthy.
+
+```sh
+pit doctor
+```
+
+Runs read-only diagnostics before you commit. `doctor` checks Git repo detection,
+`.pit/config.json` parseability, `.pit/state.json` ignore status, prompt source
+path validity, legacy Codex history config, and whether both Git hooks contain
+the pit managed block. It does not read or print prompt contents.
 
 ```sh
 pit capture

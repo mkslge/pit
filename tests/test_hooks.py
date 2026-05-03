@@ -6,13 +6,16 @@ import stat
 import subprocess
 from pathlib import Path
 
-from helpers import run, run_pit, write_json
+from helpers import run, run_pit_with_env, write_json
 from pit.cli import HOOK_BEGIN, HOOK_END
 
 
-def test_init_creates_executable_hooks_without_duplicate_blocks(git_repo: Path) -> None:
-    run_pit(git_repo, "init")
-    run_pit(git_repo, "init")
+def test_init_creates_executable_hooks_without_duplicate_blocks(
+    git_repo: Path,
+    pit_command_env: dict[str, str],
+) -> None:
+    run_pit_with_env(git_repo, pit_command_env, "init")
+    run_pit_with_env(git_repo, pit_command_env, "init")
 
     for hook_name in ("pre-commit", "post-commit"):
         hook = git_repo / ".git" / "hooks" / hook_name
@@ -25,7 +28,10 @@ def test_init_creates_executable_hooks_without_duplicate_blocks(git_repo: Path) 
         assert hook.stat().st_mode & stat.S_IXUSR
 
 
-def test_init_preserves_existing_hook_content(git_repo: Path) -> None:
+def test_init_preserves_existing_hook_content(
+    git_repo: Path,
+    pit_command_env: dict[str, str],
+) -> None:
     hooks_dir = git_repo / ".git" / "hooks"
     hooks_dir.mkdir(exist_ok=True)
     pre_commit = hooks_dir / "pre-commit"
@@ -35,19 +41,19 @@ def test_init_preserves_existing_hook_content(git_repo: Path) -> None:
         encoding="utf-8",
     )
 
-    run_pit(git_repo, "init")
+    run_pit_with_env(git_repo, pit_command_env, "init")
 
     hook_text = pre_commit.read_text(encoding="utf-8")
     assert "echo existing pre-commit hook" in hook_text
     assert hook_text.count(HOOK_BEGIN) == 1
-    assert "pit hook pre-commit" in hook_text
+    assert " hook pre-commit" in hook_text
 
 
 def test_git_commit_attaches_session_file_from_codex_fixture(
     git_repo: Path,
     pit_command_env: dict[str, str],
 ) -> None:
-    run_pit(git_repo, "init")
+    run_pit_with_env(git_repo, pit_command_env, "init")
     write_codex_config(git_repo)
     write_codex_transcript(
         git_repo,
@@ -86,7 +92,7 @@ def test_failed_commit_keeps_prompt_marker_pending(
     git_repo: Path,
     pit_command_env: dict[str, str],
 ) -> None:
-    run_pit(git_repo, "init")
+    run_pit_with_env(git_repo, pit_command_env, "init")
     write_codex_config(git_repo)
     write_codex_transcript(git_repo, [("2026-05-03T10:00:01Z", "Prompt before failure")])
     install_failing_hook_after_pit_block(git_repo)
@@ -117,7 +123,7 @@ def test_retry_after_failed_commit_reuses_pending_session_and_promotes_state(
     git_repo: Path,
     pit_command_env: dict[str, str],
 ) -> None:
-    run_pit(git_repo, "init")
+    run_pit_with_env(git_repo, pit_command_env, "init")
     write_codex_config(git_repo)
     write_codex_transcript(git_repo, [("2026-05-03T10:00:01Z", "Retry this prompt")])
     install_failing_hook_after_pit_block(git_repo)

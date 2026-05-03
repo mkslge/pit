@@ -48,6 +48,30 @@ def run_pit(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return run([sys.executable, "-m", "pit", *args], cwd=repo, env=pit_env())
 
 
+def run_pit_with_env(
+    repo: Path,
+    env: dict[str, str],
+    *args: str,
+) -> subprocess.CompletedProcess[str]:
+    return run([sys.executable, "-m", "pit", *args], cwd=repo, env=env)
+
+
+def run_pit_raw(
+    repo: Path,
+    env: dict[str, str],
+    *args: str,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "pit", *args],
+        cwd=repo,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+
 def write_json(path: Path, data: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

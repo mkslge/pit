@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import json
+import os
+import shutil
 import stat
 import sys
 from pathlib import Path
@@ -18,6 +21,7 @@ from .prompts import (
     is_legacy_codex_config,
     legacy_codex_history_message,
     prompt_source_from_config,
+    resolve_source_path,
 )
 from .session import write_session
 from .state import DEFAULT_STATE, StateError, load_state, save_state
@@ -33,6 +37,8 @@ DEFAULT_CONFIG = {
 
 HOOK_BEGIN = "# BEGIN pit managed block"
 HOOK_END = "# END pit managed block"
+
+STATE_IGNORE_PATH = ".pit/state.json"
 
 
 class PitError(Exception):
@@ -83,6 +89,16 @@ def build_parser() -> argparse.ArgumentParser:
         description="Show pit configuration and uncaptured prompt count.",
     )
     status_parser.set_defaults(func=cmd_status)
+
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="check whether pit is ready to attach prompts on commit",
+        description=(
+            "Run read-only diagnostics for Git, pit config, prompt source path, "
+            "state ignore rules, and installed hooks."
+        ),
+    )
+    doctor_parser.set_defaults(func=cmd_doctor)
 
     capture_parser = subparsers.add_parser(
         "capture",
@@ -159,15 +175,34 @@ def cmd_status(_args: argparse.Namespace) -> int:
     state = load_state(paths.state_file)
     prompt_source = config.get("prompt_source", {})
     source_type = prompt_source.get("type", "unknown")
-    uncaptured_count = count_uncaptured_prompts(config, state, paths)
+    try:
+        uncaptured_prompts = str(count_uncaptured_prompts(config, state, paths))
+    except PromptSourceError as exc:
+        uncaptured_prompts = f"unavailable ({exc})"
 
     print("pit initialized")
     print(f"Repo: {paths.repo_root}")
     print(f"Prompt source: {source_type}")
-    print(f"Uncaptured prompts: {uncaptured_count}")
+    print(f"Uncaptured prompts: {uncaptured_prompts}")
     print(f"Sessions directory: {paths.sessions_dir}")
     print(f"Last captured prompt: {state.get('last_seen_prompt_id') or 'none'}")
-    print("Hooks: installed by `pit init`")
+    hook_issues = hook_health_issues(paths)
+    if hook_issues:
+        print("Hooks: needs attention; run `pit init`")
+    else:
+        print("Hooks: OK")
+    return 0
+
+
+def cmd_doctor(_args: argparse.Namespace) -> int:
+    checks = run_diagnostics()
+    for check in checks:
+        print(f"{check.status}: {check.name}")
+        if check.detail:
+            print(f"  {check.detail}")
+
+    if any(check.status == "FAIL" for check in checks):
+        return 1
     return 0
 
 
@@ -400,6 +435,177 @@ def read_json(path, label: str) -> dict:
     return data
 
 
+@dataclass(frozen=True)
+class DiagnosticCheck:
+    name: str
+    status: str
+    detail: str = ""
+
+
+def run_diagnostics() -> list[DiagnosticCheck]:
+    checks: list[DiagnosticCheck] = []
+    try:
+        paths = discover_paths()
+    except GitError as exc:
+        return [
+            DiagnosticCheck(
+                "Git repository",
+                "FAIL",
+                f"{exc}. Run pit commands from inside a Git worktree.",
+            )
+        ]
+
+    checks.append(DiagnosticCheck("Git repository", "OK", str(paths.repo_root)))
+
+    config: dict | None = None
+    if not paths.config_file.exists():
+        checks.append(
+            DiagnosticCheck(
+                ".pit/config.json",
+                "FAIL",
+                "missing; run `pit init` to create pit repo metadata.",
+            )
+        )
+    else:
+        try:
+            config = read_json(paths.config_file, ".pit/config.json")
+        except (OSError, json.JSONDecodeError, PitError) as exc:
+            checks.append(
+                DiagnosticCheck(
+                    ".pit/config.json",
+                    "FAIL",
+                    f"{exc}. Fix the JSON or rerun `pit init` if it is missing.",
+                )
+            )
+        else:
+            checks.append(DiagnosticCheck(".pit/config.json", "OK", "valid JSON object"))
+
+    if state_ignore_is_healthy(paths):
+        checks.append(DiagnosticCheck(".pit/state.json ignore rule", "OK"))
+    else:
+        checks.append(
+            DiagnosticCheck(
+                ".pit/state.json ignore rule",
+                "FAIL",
+                "not ignored by Git; run `pit init` to add it to .gitignore.",
+            )
+        )
+
+    if config is not None:
+        checks.append(prompt_source_path_check(config, paths))
+
+    for hook_name in ("pre-commit", "post-commit"):
+        issues = single_hook_issues(paths, hook_name)
+        if issues:
+            checks.append(
+                DiagnosticCheck(
+                    f"{hook_name} hook",
+                    "FAIL",
+                    "; ".join(issues) + ". Run `pit init` to repair hooks.",
+                )
+            )
+        else:
+            checks.append(DiagnosticCheck(f"{hook_name} hook", "OK"))
+
+    return checks
+
+
+def prompt_source_path_check(config: dict, paths: PitPaths) -> DiagnosticCheck:
+    prompt_source = config.get("prompt_source")
+    if not isinstance(prompt_source, dict):
+        return DiagnosticCheck(
+            "Prompt source",
+            "FAIL",
+            "config prompt_source must be a JSON object.",
+        )
+
+    source_type = prompt_source.get("type")
+    raw_path = prompt_source.get("path")
+    if not isinstance(raw_path, str) or not raw_path:
+        return DiagnosticCheck(
+            "Prompt source path",
+            "FAIL",
+            "prompt_source.path must be a non-empty string.",
+        )
+
+    if is_legacy_codex_config(config):
+        return DiagnosticCheck(
+            "Prompt source path",
+            "FAIL",
+            legacy_codex_history_message(raw_path),
+        )
+
+    if source_type not in {"codex", "fixture"}:
+        return DiagnosticCheck(
+            "Prompt source",
+            "FAIL",
+            f"unsupported prompt source type: {source_type or 'missing'}",
+        )
+
+    resolved_path = resolve_source_path(raw_path, paths.repo_root)
+    if source_type == "codex":
+        if not resolved_path.exists():
+            return DiagnosticCheck(
+                "Prompt source path",
+                "FAIL",
+                f"Codex sessions path not found: {resolved_path}",
+            )
+        if not resolved_path.is_dir():
+            return DiagnosticCheck(
+                "Prompt source path",
+                "FAIL",
+                f"Codex sessions path is not a directory: {resolved_path}",
+            )
+        return DiagnosticCheck("Prompt source path", "OK", str(resolved_path))
+
+    if not resolved_path.exists():
+        return DiagnosticCheck(
+            "Prompt source path",
+            "FAIL",
+            f"fixture prompt source not found: {resolved_path}",
+        )
+    if not resolved_path.is_file():
+        return DiagnosticCheck(
+            "Prompt source path",
+            "FAIL",
+            f"fixture prompt source is not a file: {resolved_path}",
+        )
+    return DiagnosticCheck("Prompt source path", "OK", str(resolved_path))
+
+
+def state_ignore_is_healthy(paths: PitPaths) -> bool:
+    try:
+        run_git(["check-ignore", STATE_IGNORE_PATH], cwd=paths.repo_root)
+    except GitError:
+        return False
+    return True
+
+
+def hook_health_issues(paths: PitPaths) -> list[str]:
+    issues: list[str] = []
+    for hook_name in ("pre-commit", "post-commit"):
+        issues.extend(
+            f"{hook_name}: {issue}" for issue in single_hook_issues(paths, hook_name)
+        )
+    return issues
+
+
+def single_hook_issues(paths: PitPaths, hook_name: str) -> list[str]:
+    hook = paths.git_dir / "hooks" / hook_name
+    issues: list[str] = []
+    if not hook.exists():
+        return ["missing"]
+    try:
+        text = hook.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"unreadable: {exc}"]
+    if HOOK_BEGIN not in text or HOOK_END not in text:
+        issues.append("missing pit managed block")
+    if not os.access(hook, os.X_OK):
+        issues.append("not executable")
+    return issues
+
+
 def warn_if_legacy_codex_config(paths: PitPaths) -> None:
     if not paths.config_file.exists():
         return
@@ -416,7 +622,7 @@ def warn_if_legacy_codex_config(paths: PitPaths) -> None:
 
 def ensure_state_ignored(paths: PitPaths) -> None:
     gitignore = paths.repo_root / ".gitignore"
-    ignore_entry = ".pit/state.json"
+    ignore_entry = STATE_IGNORE_PATH
 
     if gitignore.exists():
         lines = gitignore.read_text(encoding="utf-8").splitlines()
@@ -443,10 +649,60 @@ def install_hooks(paths: PitPaths) -> None:
 
 
 def pit_hook_command(paths: PitPaths, hook_name: str) -> str:
-    repo_pit = paths.repo_root / "pit"
-    if repo_pit.exists():
-        return f"{shell_quote(str(repo_pit))} hook {hook_name}"
+    pit_executable = find_pit_executable(paths)
+    if pit_executable is not None:
+        return f"{shell_quote(str(pit_executable))} hook {hook_name}"
+
     return f"pit hook {hook_name}"
+
+
+def find_pit_executable(paths: PitPaths) -> Path | None:
+    active_executable = executable_from_argv0()
+    if active_executable is not None:
+        return active_executable
+
+    path_executable = executable_from_path()
+    if path_executable is not None:
+        return path_executable
+
+    repo_pit = paths.repo_root / "pit"
+    if is_executable_file(repo_pit):
+        return repo_pit.resolve()
+
+    return None
+
+
+def executable_from_argv0() -> Path | None:
+    argv0 = sys.argv[0]
+    if not argv0:
+        return None
+
+    candidate = Path(argv0)
+    if not candidate.is_absolute() and (
+        os.sep in argv0 or (os.altsep is not None and os.altsep in argv0)
+    ):
+        candidate = Path.cwd() / candidate
+
+    if candidate.is_absolute() and is_executable_file(candidate):
+        return candidate.resolve()
+
+    return None
+
+
+def executable_from_path() -> Path | None:
+    found = shutil.which("pit")
+    if found is None:
+        return None
+
+    candidate = Path(found)
+    if is_executable_file(candidate):
+        return candidate.resolve()
+
+    return None
+
+
+def is_executable_file(path: Path) -> bool:
+    return path.is_file() and os.access(path, os.X_OK)
 
 
 def shell_quote(value: str) -> str:
