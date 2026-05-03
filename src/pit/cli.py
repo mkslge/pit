@@ -12,7 +12,13 @@ from typing import Sequence
 from . import __version__
 from .git import GitError, run_git
 from .paths import PitPaths, discover_paths
-from .prompts import Prompt, PromptSourceError, prompt_source_from_config
+from .prompts import (
+    Prompt,
+    PromptSourceError,
+    is_legacy_codex_config,
+    legacy_codex_history_message,
+    prompt_source_from_config,
+)
 from .session import write_session
 from .state import DEFAULT_STATE, StateError, load_state, save_state
 
@@ -67,30 +73,38 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser = subparsers.add_parser(
         "init",
         help="initialize pit in the current Git repository",
+        description="Initialize pit metadata and install local Git hooks.",
     )
     init_parser.set_defaults(func=cmd_init)
 
     status_parser = subparsers.add_parser(
         "status",
         help="show pit initialization status",
+        description="Show pit configuration and uncaptured prompt count.",
     )
     status_parser.set_defaults(func=cmd_status)
 
     capture_parser = subparsers.add_parser(
         "capture",
         help="capture new prompts into a staged pit session file",
+        description=(
+            "Manually capture new prompts into .pit/sessions/ and stage the "
+            "session file. Normal commits use the Git hook automatically."
+        ),
     )
     capture_parser.set_defaults(func=cmd_capture)
 
     log_parser = subparsers.add_parser(
         "log",
         help="show commits that include pit prompt sessions",
+        description="List commits that include .pit/sessions/*.json files.",
     )
     log_parser.set_defaults(func=cmd_log)
 
     show_parser = subparsers.add_parser(
         "show",
         help="show prompt history attached to a commit",
+        description="Show the prompt session files attached to one commit.",
     )
     show_parser.add_argument("commit", help="commit to inspect")
     show_parser.set_defaults(func=cmd_show)
@@ -98,18 +112,21 @@ def build_parser() -> argparse.ArgumentParser:
     hook_parser = subparsers.add_parser(
         "hook",
         help="run pit Git hook integration commands",
+        description="Internal commands used by Git hooks installed by pit init.",
     )
     hook_subparsers = hook_parser.add_subparsers(dest="hook_name", required=True)
 
     pre_commit_parser = hook_subparsers.add_parser(
         "pre-commit",
         help="run the pit pre-commit hook",
+        description="Internal command run before Git creates a commit.",
     )
     pre_commit_parser.set_defaults(func=cmd_hook_pre_commit)
 
     post_commit_parser = hook_subparsers.add_parser(
         "post-commit",
         help="run the pit post-commit hook",
+        description="Internal command run after Git successfully creates a commit.",
     )
     post_commit_parser.set_defaults(func=cmd_hook_post_commit)
 
@@ -125,6 +142,7 @@ def cmd_init(_args: argparse.Namespace) -> int:
     write_json_if_missing(paths.state_file, DEFAULT_STATE)
     ensure_state_ignored(paths)
     install_hooks(paths)
+    warn_if_legacy_codex_config(paths)
 
     print(f"pit initialized in {paths.repo_root}")
     print("hooks installed")
@@ -380,6 +398,20 @@ def read_json(path, label: str) -> dict:
     if not isinstance(data, dict):
         raise PitError(f"invalid {label}: expected a JSON object")
     return data
+
+
+def warn_if_legacy_codex_config(paths: PitPaths) -> None:
+    if not paths.config_file.exists():
+        return
+    config = read_json(paths.config_file, ".pit/config.json")
+    if not is_legacy_codex_config(config):
+        return
+
+    prompt_source = config["prompt_source"]
+    print(
+        f"pit: warning: {legacy_codex_history_message(prompt_source['path'])}",
+        file=sys.stderr,
+    )
 
 
 def ensure_state_ignored(paths: PitPaths) -> None:

@@ -13,6 +13,13 @@ class PromptSourceError(Exception):
     """Raised when a prompt source cannot be read."""
 
 
+CODEX_SESSIONS_PATH = "~/.codex/sessions"
+LEGACY_CODEX_HISTORY_PATHS = (
+    "~/.codex/history",
+    "~/.codex/history.jsonl",
+)
+
+
 @dataclass(frozen=True)
 class Prompt:
     id: str
@@ -92,6 +99,8 @@ def prompt_source_from_config(config: dict, repo_root: Path) -> PromptSource:
         raw_path = prompt_source.get("path")
         if not isinstance(raw_path, str) or not raw_path:
             raise PromptSourceError("codex prompt_source.path must be a non-empty string")
+        if is_legacy_codex_history_path(raw_path):
+            raise PromptSourceError(legacy_codex_history_message(raw_path))
         return CodexPromptSource(
             sessions_root=resolve_source_path(raw_path, repo_root),
             repo_root=repo_root,
@@ -105,6 +114,34 @@ def resolve_source_path(raw_path: str, repo_root: Path) -> Path:
     if path.is_absolute():
         return path
     return repo_root / path
+
+
+def is_legacy_codex_config(config: dict) -> bool:
+    prompt_source = config.get("prompt_source")
+    if not isinstance(prompt_source, dict):
+        return False
+    if prompt_source.get("type") != "codex":
+        return False
+    raw_path = prompt_source.get("path")
+    return isinstance(raw_path, str) and is_legacy_codex_history_path(raw_path)
+
+
+def is_legacy_codex_history_path(raw_path: str) -> bool:
+    normalized = raw_path.rstrip("/")
+    if normalized in LEGACY_CODEX_HISTORY_PATHS:
+        return True
+
+    expanded = Path(normalized).expanduser()
+    return expanded in {Path(path).expanduser() for path in LEGACY_CODEX_HISTORY_PATHS}
+
+
+def legacy_codex_history_message(raw_path: str) -> str:
+    return (
+        "Codex prompt_source.path points at the old history file "
+        f"({raw_path}). The Codex MVP source reads transcript JSONL files from "
+        f"{CODEX_SESSIONS_PATH}. Update .pit/config.json to use: "
+        '{"prompt_source": {"type": "codex", "path": "~/.codex/sessions"}}'
+    )
 
 
 def parse_prompt(raw_prompt: object, path: Path, line_number: int) -> Prompt:

@@ -1,268 +1,286 @@
-# Prompt Sequence for Building the pit MVP
+# Prompt Sequence for Making pit Installable
 
-Use these prompts one at a time. The goal is to keep each agent run small enough that it can implement, test, and explain the result without drifting.
+Use these prompts one at a time. Each prompt should be small enough for an agent to implement, test, and explain without broadening scope.
 
 Before each prompt, make sure the agent reads:
 
 - `AGENTS.md`
 - `PLAN.md`
+- `README.md`
 - the current code tree
 
-## Prompt 1: Python CLI Skeleton
+The MVP core loop already exists:
 
-```text
-Read AGENTS.md and PLAN.md. Implement Phase 1 only.
-
-Build pit as a Python CLI using the standard library. Create the package layout under src/pit, add __main__.py so PYTHONPATH=src python3 -m pit works, and implement an argparse CLI with init and status commands.
-
-For this step:
-- implement Git repo detection with git rev-parse --show-toplevel and git rev-parse --git-dir
-- implement path helpers for repo root, .pit, config.json, state.json, and sessions/
-- implement pit init so it creates .pit/config.json, .pit/state.json, and .pit/sessions/
-- implement pit status so it reports whether pit is initialized
-- leave hook installation as a clear TODO or stub if needed
-- do not implement prompt capture yet
-- do not remove the existing CMake/C++ skeleton
-
-After coding, run the relevant smoke tests:
-- PYTHONPATH=src python3 -m pit --help
-- run init inside a temporary git repo
-- run init outside a git repo and confirm it fails clearly
-
-Explain what changed and what remains for Phase 2.
+```sh
+pit init
+git add .
+git commit -m "..."
+pit show HEAD
 ```
 
-## Prompt 2: Hook Installation
+The next goal is to make pit installable, testable, and practical to use outside this development checkout.
+
+## Prompt 1: Python Packaging
 
 ```text
-Read AGENTS.md, PLAN.md, and the current Python implementation. Implement Phase 2 only.
+Read AGENTS.md, PLAN.md, README.md, and the current implementation. Implement packaging only.
 
-Add Git hook installation to pit init.
+Goal: make pit installable as a Python CLI with a real `pit` console command.
 
 Requirements:
-- install or update .git/hooks/pre-commit and .git/hooks/post-commit
-- preserve existing hook contents
-- append or update a clearly marked pit managed block
-- do not duplicate pit blocks on repeated pit init
-- make hooks executable
-- pre-commit block should run: pit hook pre-commit
-- post-commit block should run: pit hook post-commit
+- add pyproject.toml using a standard backend such as hatchling or setuptools
+- package the existing src/pit layout
+- expose a console script named pit that calls pit.cli:main
+- include README.md as project readme metadata
+- declare a supported Python version
+- do not add runtime dependencies unless truly needed
+- keep the repo-root ./pit development entrypoint working
+- do not change pit behavior beyond packaging
 
-Also add CLI handling for:
-- pit hook pre-commit
-- pit hook post-commit
+After coding, test in a temporary virtual environment:
+- python -m pip install -e .
+- pit --help
+- pit --version
+- pit init inside a temporary Git repo
+- verify installed Git hooks call an installed pit command or otherwise work outside this repo checkout
 
-For now those hook commands may be safe no-ops, because capture comes later.
-
-After coding, test in a temporary git repo:
-- pit init creates hooks
-- running pit init twice does not duplicate hook blocks
-- existing hook content is preserved
-
-Explain the hook strategy and any assumptions.
+Explain the packaging choice and how users should install pit locally.
 ```
 
-## Prompt 3: Fixture Prompt Source and Capture
+## Prompt 2: Test Suite Foundation
 
 ```text
-Read AGENTS.md, PLAN.md, and the current implementation. Implement Phase 3 only.
+Read AGENTS.md, PLAN.md, README.md, and the current implementation. Add an automated test suite foundation only.
 
-Add the prompt source abstraction and a fixture JSONL source so we can test capture before depending on real Codex transcript files.
+Goal: make core behavior testable with one command.
 
 Requirements:
-- create a Prompt dataclass with id, timestamp, and text
-- create a PromptSource interface or simple protocol
-- implement a fixture source that reads JSONL prompts from a configured path
-- update .pit/config.json shape to support prompt_source.type = fixture and prompt_source.path
-- implement state loading/saving
-- implement session JSON creation using session IDs, not commit SHAs
-- implement pit capture
-- pit capture should read uncaptured prompts, write .pit/sessions/<session-id>.json, and stage it with git add
-- if there are no new prompts, print a clear no-op message
+- choose pytest unless there is a strong reason not to
+- add test dependencies under a development/test extra in pyproject.toml
+- add tests/ with helpers for creating temporary Git repos
+- tests should invoke the installed CLI or python module in a realistic way
+- cover path discovery, JSON state loading, fixture prompt source parsing, and session writing
+- keep tests isolated from the user's real ~/.codex by using fixtures
+- do not hit network
 
-Use pending state carefully. Do not permanently advance last_seen_prompt_id in a way that loses prompts if a later commit fails.
+After coding, run:
+- python -m pytest
+- python -m pip install -e .[test] in a fresh venv if feasible
 
-Add testdata/prompts.jsonl or equivalent fixtures.
+Explain the test layout and how future tests should be added.
+```
+
+## Prompt 3: Hook Integration Tests
+
+```text
+Read AGENTS.md, PLAN.md, README.md, and the current implementation. Add focused hook integration tests.
+
+Goal: lock down Git hook behavior before changing install paths further.
+
+Requirements:
+- test pit init creates pre-commit and post-commit hooks
+- test repeated pit init does not duplicate managed blocks
+- test existing hook content is preserved
+- test hook files are executable
+- test normal git commit attaches a session file using sanitized Codex fixtures
+- test failed commit leaves last_seen_prompt_id unchanged and pending state set
+- test retry after failed commit reuses one pending session and then promotes state
+- use temporary Git repos and sanitized fixtures only
+
+After coding, run:
+- python -m pytest
+
+Explain any platform assumptions about Git hooks and executable permissions.
+```
+
+## Prompt 4: Codex Source Tests and Edge Cases
+
+```text
+Read AGENTS.md, PLAN.md, README.md, and the current implementation. Strengthen Codex source parsing tests only.
+
+Goal: make the Codex transcript adapter safe against real-world transcript variation.
+
+Requirements:
+- test repo cwd filtering includes matching transcripts
+- test unrelated cwd transcripts are skipped
+- test transcripts missing cwd are skipped
+- test payload.type == "user_message" is captured
+- test response_item payload.role == "user" is not captured
+- test assistant messages and tool events are not captured
+- test payload.message is preferred when present
+- test payload.text_elements fallback works
+- test deterministic prompt IDs remain stable across reads
+- test invalid JSONL gives a useful error with file and line number
+- do not use private local Codex transcripts in tests
+
+After coding, run:
+- python -m pytest
+
+Explain the privacy boundary the adapter enforces.
+```
+
+## Prompt 5: Install-Aware Hook Command Strategy
+
+```text
+Read AGENTS.md, PLAN.md, README.md, and the current implementation. Improve hook command installation for installed use.
+
+Goal: hooks should work when pit is installed globally, installed in a venv, or run from a development checkout.
+
+Requirements:
+- inspect the current hook command strategy
+- prefer the active pit executable path when safe, for example sys.argv[0] or shutil.which("pit"), but preserve development checkout support
+- avoid writing brittle commands that only work in the current shell session
+- quote paths safely for POSIX shell hooks
+- keep existing hook content and managed block update behavior
+- document the assumptions in README.md
 
 After coding, test:
-- pit capture with no prompts
-- pit capture with fixture prompts
-- generated session JSON is valid
-- generated session file is staged
+- editable install in a venv, run pit init, then git commit succeeds from a temp repo
+- development checkout ./pit init still writes working hooks
+- repeated pit init updates existing pit block without duplication
 
-Explain how prompt filtering works.
+Explain exactly what command the hook writes and why.
 ```
 
-## Prompt 4: Commit-Time Capture
+## Prompt 6: User-Facing Config Commands
 
 ```text
-Read AGENTS.md, PLAN.md, and the current implementation. Implement Phase 4 only.
+Read AGENTS.md, PLAN.md, README.md, and the current implementation. Add small config UX commands.
 
-Wire capture into normal git commits.
+Goal: users should not need to hand-edit .pit/config.json for common setup checks.
 
 Requirements:
-- pit hook pre-commit should perform capture quietly
-- if there are no new prompts, allow the commit
-- if there are new prompts, write and git add the session file
-- if capture fails, print a useful error to stderr and block the commit
-- pit hook post-commit should promote pending capture state after a successful commit
-- if a commit fails before post-commit runs, the next attempt must not lose prompts
+- add `pit config show` to print current config safely
+- add `pit config set-source codex [--path PATH]`
+- add `pit config set-source fixture --path PATH` for tests/development
+- validate source paths where practical
+- never print prompt contents
+- preserve unrelated config keys
+- keep .pit/config.json committed project config
+- keep .pit/state.json local ignored state
 
-Use the fixture prompt source for this phase.
+After coding, test in temporary repos:
+- config show before init errors clearly
+- set-source codex writes ~/.codex/sessions by default
+- set-source fixture requires --path
+- capture still works after setting fixture source
 
-After coding, test in a temporary git repo:
-- normal git commit includes .pit/sessions/<session-id>.json
-- commit with no new prompts succeeds and creates no extra session
-- repeated commit attempts do not duplicate or lose prompts
-- failed commit does not permanently advance captured state
-
-Explain the pre-commit/post-commit state transition in plain language.
+Explain why config is committed while state is ignored.
 ```
 
-## Prompt 5: Show and Log Commands
+## Prompt 7: Safer Status and Doctor Checks
 
 ```text
-Read AGENTS.md, PLAN.md, and the current implementation. Implement Phase 5 only.
+Read AGENTS.md, PLAN.md, README.md, and the current implementation. Add diagnostic checks without changing capture behavior.
 
-Add pit show <commit> and pit log.
-
-Requirements:
-- pit show <commit> detects .pit/sessions/*.json files added or modified in that commit
-- pit show reads session files with git show <commit>:<path>
-- pit show prints commit info and prompts in order
-- pit log walks commits touching .pit/sessions and prints short SHA, subject, session ID, and prompt count
-- handle commits with no pit session cleanly
-
-After coding, create a temporary repo with at least two commits:
-- one commit with prompt history
-- one commit without prompt history
-
-Verify:
-- pit show HEAD works when HEAD has a session
-- pit show <commit-without-session> reports no prompt session cleanly
-- pit log lists only commits with pit sessions
-
-Explain the Git commands used and why.
-```
-
-## Prompt 6: Codex Source Adapter
-
-```text
-Read AGENTS.md, PLAN.md, and the current implementation. Implement Phase 6 only.
-
-Add the real Codex prompt source adapter using the local Codex transcript format already investigated.
-
-Known Codex storage findings:
-- full transcripts are JSONL files under ~/.codex/sessions/YYYY/MM/DD/
-- transcript filenames look like rollout-<timestamp>-<session-id>.jsonl
-- each JSONL row has top-level keys like timestamp, type, and payload
-- the first row is usually type = session_meta
-- session_meta.payload includes id, cwd, timestamp, source, model_provider, cli_version, and sometimes git
-- repo association should use session_meta.payload.cwd and compare it to the current Git repo root
-- actual user-entered prompts are event rows where payload.type == "user_message"
-- user_message payloads include fields such as message, text_elements, images, and local_images
-- response_item rows with payload.type == "message" and payload.role == "user" also exist, but treat them as model-facing/context records for now, not canonical prompt events
-- assistant/tool output must not be captured for the MVP
-- assistant records include payload.role == "assistant" or payload.type == "agent_message"
-- tool records include function_call, function_call_output, custom_tool_call, custom_tool_call_output, exec_command_end, patch_apply_end, and similar payload types
-- stable per-prompt IDs do not appear to exist in Codex transcript rows
-- derive prompt IDs deterministically from session id, timestamp, content hash, and event position/line number
-- ~/.codex/history.jsonl exists but is small/legacy/summary-like and should not be the primary source
-- ~/.codex/session_index.jsonl exists but does not include cwd, so it is not sufficient by itself for repo-scoped capture
-- ~/.codex/state_5.sqlite has a threads table with rollout_path and cwd and may be useful later as an index, but do not depend on SQLite for this MVP adapter
+Goal: help users understand whether pit is ready before committing.
 
 Requirements:
-- implement prompt_source.type = "codex"
-- default new .pit/config.json should use:
-  {
-    "version": 1,
-    "prompt_source": {
-      "type": "codex",
-      "path": "~/.codex/sessions"
-    }
-  }
-- parse Codex transcript JSONL files recursively below the configured sessions root
-- extract only payload.type == "user_message" events
-- prompt text should come from payload.message when it is a string, with payload.text_elements as a fallback
-- include timestamp, text, and a deterministic prompt id
-- derive IDs from session id, timestamp, content hash, and line number/event position
-- ignore transcripts whose session_meta.payload.cwd does not match the current Git repo root
-- ignore transcripts that do not have enough cwd metadata to safely associate with the repo
-- do not capture assistant responses, tool calls, shell output, or model-facing response_item user records
-- keep the fixture source working unchanged
-- add sanitized Codex-style JSONL fixtures under testdata/codex_sessions or equivalent
-- include at least one matching-repo transcript and one unrelated-repo transcript in fixtures
-- make pit status count uncaptured prompts for the configured source
+- improve pit status to show hook installation health
+- add pit doctor or equivalent diagnostic command
+- check Git repo detection
+- check .pit/config.json existence and parseability
+- check .pit/state.json ignore status
+- check prompt source path validity
+- check legacy ~/.codex/history config and explain the fix
+- check whether pre-commit and post-commit hooks contain the pit managed block
+- do not read or print prompt contents
 
 After coding, test:
-- pit status counts uncaptured Codex prompts from sanitized fixtures
-- pit capture writes a session from Codex prompts
-- normal git commit attaches Codex prompts without any pit prompt command
-- unrelated-repo fixture prompts are not captured
-- assistant/tool/model-facing records are not captured
-- fixture source still works
+- healthy repo reports OK
+- missing hooks report actionable fix
+- legacy Codex path reports actionable fix
+- fixture source remains supported
 
-Explain privacy assumptions and remaining limitations. Do not expose private local prompt contents in the final response.
+Explain the difference between status and doctor.
 ```
 
-## Prompt 7: Existing Config Migration and Source UX
+## Prompt 8: README and Install Documentation
 
 ```text
-Read AGENTS.md, PLAN.md, and the current implementation. Implement only the source UX/migration cleanup after the Codex adapter.
+Read AGENTS.md, PLAN.md, README.md, and the current implementation. Improve documentation only.
 
-The real Codex source path is ~/.codex/sessions. Older local .pit/config.json files may still point at ~/.codex/history or ~/.codex/history.jsonl.
+Goal: a new user should be able to install, initialize, commit, and inspect prompt history without reading the source.
 
 Requirements:
-- make pit status and pit capture fail with an actionable message if prompt_source.type = codex points at the old history path
-- either update pit init to preserve existing config but warn clearly about old Codex paths, or add a small repair path that rewrites old Codex history paths to ~/.codex/sessions
-- do not overwrite unrelated custom config
-- document the expected Codex config shape
-- keep fixture configs working
+- document install from local checkout
+- document editable install for development
+- document normal flow: pit init, git add, git commit, pit show HEAD
+- document what files are committed and ignored
+- document Codex source assumptions and ~/.codex/sessions
+- document hook behavior and how to troubleshoot hooks
+- document privacy boundaries: what is captured and what is not
+- document known limitations
+- keep README concise but complete
 
-After coding, test:
-- existing .pit/config.json with ~/.codex/history gives a clear fix or is safely migrated
-- .pit/config.json with ~/.codex/sessions works
-- fixture source still works
+After editing, verify commands in docs match actual CLI help.
 
-Explain the migration behavior and why it avoids surprising users.
+Do not change runtime code.
 ```
 
-## Prompt 8: MVP Polish Pass
+## Prompt 9: Release Hygiene
 
 ```text
-Read AGENTS.md, PLAN.md, and the full implementation. Do a final MVP polish pass.
+Read AGENTS.md, PLAN.md, README.md, and the current implementation. Add release hygiene without publishing anything.
 
-Focus on bugs, UX clarity, and installability. Do not add new major features.
+Goal: prepare the repo for a local or future package release.
 
-Check:
-- command help text is understandable
-- errors are clear and actionable
-- hook output is quiet on success
-- no prompts are lost on failed commits
-- repeated pit init is idempotent
-- .pit/state.json is ignored
-- .pit/config.json and .pit/sessions/*.json are committed
-- default Codex source points at ~/.codex/sessions, not ~/.codex/history
-- Codex capture filters by repo cwd and skips assistant/tool output
-- README or docs explain the exact MVP flow
+Requirements:
+- add or update LICENSE if the project owner has chosen one; otherwise add a clear TODO section, not a fake license
+- add CHANGELOG.md with an Unreleased section
+- ensure version lives in one obvious place or document current version source
+- ensure package metadata has author/project URLs only if known
+- add MANIFEST or package-data config only if needed
+- ensure testdata needed by tests is included appropriately
+- do not publish to PyPI
 
-Run the full test suite and a manual smoke test in a temporary Git repo.
+After coding, test:
+- python -m build if build tooling is available, or explain if not installed
+- pip install from the built artifact if feasible
+
+Explain what remains before an actual public release.
+```
+
+## Prompt 10: End-to-End Install Smoke Test
+
+```text
+Read AGENTS.md, PLAN.md, README.md, and the current implementation. Run and document a full install smoke test. Make code changes only for bugs found during the smoke test.
+
+Goal: prove pit works as an installed CLI in a clean temporary repo.
+
+Required smoke test:
+- create a temporary virtual environment
+- install pit from this checkout
+- create a separate temporary Git repo
+- configure sanitized Codex fixture source
+- run pit init
+- run pit status
+- make a normal git commit
+- verify .pit/sessions/*.json is committed
+- run pit show HEAD
+- run pit log
+- run a second commit with no new prompts
+- verify no extra session is created
+- simulate a failed commit and verify pending state is not promoted
+
+If bugs are found, fix them narrowly and rerun the failed part.
 
 Return:
-- changes made
-- tests run
-- known limitations
-- whether the MVP is ready for a demo
+- exact commands run
+- pass/fail summary
+- any bugs fixed
+- remaining limitations
+- whether pit is usable to install locally
 ```
 
-## Best Prompting Pattern
+## Ongoing Prompt Template
 
-Use this shape for any extra prompt:
+Use this shape for any additional task:
 
 ```text
-Read AGENTS.md and PLAN.md. Work only on <specific phase or bug>.
+Read AGENTS.md, PLAN.md, README.md, and the current implementation. Work only on <specific installability or usability issue>.
 
-Do not broaden scope. Preserve the current MVP flow:
+Preserve the core flow:
 pit init
 git add .
 git commit -m "..."
@@ -271,16 +289,14 @@ pit show HEAD
 Implement the smallest complete change, run focused tests, and explain what changed, what was verified, and what remains.
 ```
 
-## What Not To Ask For Yet
+## Not Yet
 
-Avoid prompts that ask for these before the core loop works:
+Avoid these until installability and local reliability are solid:
 
-- support every AI coding tool
-- build a daemon
-- build a cloud service
-- create an IDE plugin
-- do prompt-to-line attribution
-- rewrite Git history to add commit SHAs into session files
-- build replay mode
-
-Those are later product bets. The killer MVP is the smallest version where a normal `git commit` automatically carries useful prompt history.
+- cloud sync
+- daemon/background watcher
+- support for every AI coding tool
+- IDE plugins
+- prompt-to-line attribution
+- replay mode
+- rewriting Git history or amending commits to insert commit SHAs

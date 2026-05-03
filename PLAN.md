@@ -80,7 +80,7 @@ Example:
   "version": 1,
   "prompt_source": {
     "type": "codex",
-    "path": "~/.codex/history"
+    "path": "~/.codex/sessions"
   }
 }
 ```
@@ -126,7 +126,7 @@ Example:
   "tool": "codex",
   "source": {
     "type": "codex",
-    "path": "~/.codex/history"
+    "path": "~/.codex/sessions"
   },
   "prompts": [
     {
@@ -384,6 +384,12 @@ Codex source design update:
   transcript timestamp/event order.
 - Avoid storing assistant responses, tool output, and shell output in MVP
   session files unless the product scope is deliberately expanded.
+- Existing configs that point `prompt_source.type = "codex"` at
+  `~/.codex/history` or `~/.codex/history.jsonl` are legacy configs from before
+  the Codex source investigation. Commands that read prompts should fail with an
+  actionable message asking the user to update `.pit/config.json` to
+  `~/.codex/sessions`; `pit init` should preserve the existing config and warn
+  rather than silently rewriting user/project configuration.
 
 Development fallback:
 

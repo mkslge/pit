@@ -77,7 +77,7 @@ Example:
   "version": 1,
   "prompt_source": {
     "type": "codex",
-    "path": "~/.codex/history"
+    "path": "~/.codex/sessions"
   }
 }
 ```
@@ -105,7 +105,7 @@ Example:
   "tool": "codex",
   "source": {
     "type": "codex",
-    "path": "~/.codex/history"
+    "path": "~/.codex/sessions"
   },
   "prompts": [
     {
