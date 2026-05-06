@@ -81,7 +81,6 @@ Commands registered:
 - `status`
 - `doctor`
 - `capture`
-- `log [commit]`
 - `show <commit>`
 - `hook pre-commit`
 - `hook post-commit`
@@ -182,27 +181,6 @@ Side effects:
 - May stage that session file with `git add`.
 - May update `.pit/state.json` pending fields.
 
-### `cmd_log(args: argparse.Namespace) -> int`
-
-Implements both `pit log` and `pit log <commit>`.
-
-Without `commit`:
-
-- Walks Git history for commits touching `.pit/sessions`.
-- Prints each matching commit, pit session ID, and prompt count.
-
-With `commit`:
-
-- Calls `print_commit_prompts(paths, args.commit)`.
-- Shows only prompts attached to the specified commit.
-
-Returns:
-
-- `0` on success, including when no sessions are found.
-
-Important distinction: plain `pit log` is history-wide summary output, while
-`pit log <commit>` is commit-scoped prompt inspection.
-
 ### `cmd_show(args: argparse.Namespace) -> int`
 
 Shows prompt history attached to one commit.
@@ -216,8 +194,8 @@ Returns:
 
 - Whatever `print_commit_prompts()` returns, currently `0`.
 
-Compatibility detail: `pit show <commit>` and `pit log <commit>` share the same
-rendering path so prompt numbering and no-session messages stay consistent.
+`pit show <commit>` is the single command for inspecting prompt text attached
+to one commit.
 
 ### `print_commit_prompts(paths: PitPaths, commit: str) -> int`
 
@@ -235,7 +213,7 @@ Behavior:
 2. Reads pit session files added or modified by that exact commit.
 3. Prints `Commit: <short-sha> <subject>`.
 4. If no pit sessions exist, prints a no-session message.
-5. Otherwise prints prompt text with one-based numbering.
+5. Otherwise prints each prompt under a visible `--- Prompt N ---` header.
 
 Returns:
 
@@ -456,8 +434,8 @@ Returns:
 
 - Repo-relative `Path` objects for matching session files.
 
-Why this matters: it is the core commit-scoping primitive used by both
-`pit show <commit>` and `pit log <commit>`.
+Why this matters: it is the core commit-scoping primitive used by
+`pit show <commit>`.
 
 ### `is_session_path(path: str) -> bool`
 

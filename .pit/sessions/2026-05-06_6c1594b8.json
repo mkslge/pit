@@ -1,0 +1,23 @@
+{
+  "session_id": "2026-05-06_6c1594b8",
+  "captured_at": "2026-05-06T00:43:18Z",
+  "commit": null,
+  "tool": "codex",
+  "source": {
+    "type": "codex",
+    "path": "~/.codex/sessions"
+  },
+  "prompts": [
+    {
+      "id": "codex:019dfaa0-4d35-70a2-87ad-0c1f20708b4b:2026-05-06T00:37:49.485Z:ecd5c57a3ab5124c:817",
+      "timestamp": "2026-05-06T00:37:49.485Z",
+      "text": "# Context from my IDE setup:\n\n## Active file: docs/program-flow.md\n\n## Open tabs:\n- program-flow.md: docs/program-flow.md\n- README.md: README.md\n- src-pit-git.md: docs/src-pit-git.md\n- README.md: docs/README.md\n- MVP_PROMPTS.md: MVP_PROMPTS.md\n\n## My request for Codex:\nfor the pit log command, make sure that there is a clear barrier between prompts, right now it is not easy to tell which text belongs to which prompt\n"
+    },
+    {
+      "id": "codex:019dfaa0-4d35-70a2-87ad-0c1f20708b4b:2026-05-06T00:40:26.854Z:2b9270f7e955e31c:930",
+      "timestamp": "2026-05-06T00:40:26.854Z",
+      "text": "# Context from my IDE setup:\n\n## Active file: docs/program-flow.md\n\n## Open tabs:\n- program-flow.md: docs/program-flow.md\n- src-pit-cli.md: docs/src-pit-cli.md\n- 2026-05-06_69d76d3f.json: .pit/sessions/2026-05-06_69d76d3f.json\n- config.json: .pit/config.json\n- state.json: .pit/state.json\n\n## My request for Codex:\ndo pit log and pit show do the same thing, if so just remove pit log completely\n"
+    }
+  ],
+  "summary": ""
+}

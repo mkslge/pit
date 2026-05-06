@@ -263,21 +263,6 @@ Important edge case:
 
 - If `pre-commit` captured prompts but the commit failed, `post-commit` will not run. The next capture should either reuse the pending session file or safely replace it without losing prompts.
 
-### `pit log`
-
-Responsibilities:
-
-1. Walk Git history for commits touching `.pit/sessions/*.json`.
-2. For each matching commit, read the session file from that commit.
-3. Print short commit SHA, subject, session ID, and prompt count.
-
-Likely Git commands:
-
-```sh
-git log --name-only --pretty=format:%H%x09%s -- .pit/sessions
-git show <commit>:.pit/sessions/<file>
-```
-
 ### `pit show <commit>`
 
 Responsibilities:
@@ -472,7 +457,6 @@ Core tests:
 8. A normal `git commit` includes `.pit/sessions/<session-id>.json`.
 9. Failed commit does not permanently advance captured state.
 10. `pit show HEAD` prints prompts attached to the commit.
-11. `pit log` lists commits containing session files.
 
 Manual smoke test:
 
@@ -574,18 +558,16 @@ Done when:
 - A normal `git commit` includes the generated session file.
 - Failed commits do not lose prompts.
 
-### Phase 5: Show and Log
+### Phase 5: Show
 
 Deliver:
 
 - `pit show <commit>`.
-- `pit log`.
-- Session file discovery from Git history.
+- Session file discovery from a selected commit.
 
 Done when:
 
 - `pit show HEAD` prints prompts from the latest commit.
-- `pit log` lists commits with prompt sessions.
 
 ### Phase 6: Real Codex Source
 

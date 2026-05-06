@@ -553,28 +553,15 @@ Neither command prints prompt contents.
 
 ## Inspecting Prompt History
 
-pit has two inspection shapes:
+pit has one prompt inspection command:
 
 ```sh
 ./pit show <commit>
-./pit log [commit]
 ```
 
 `pit show <commit>` shows prompt text attached to one commit.
 
-`pit log` without a commit walks history and summarizes commits that include pit
-session files:
-
-```text
-a13f9c2 Fix buffer pool eviction
-  pit session: 2026-05-06_ab12cd34
-  prompts: 2
-```
-
-`pit log <commit>` is commit-scoped and uses the same rendering as
-`pit show <commit>`.
-
-The shared helper is:
+The rendering helper is:
 
 ```text
 print_commit_prompts(paths, commit)
@@ -605,7 +592,7 @@ Then it keeps only added or modified paths matching:
 ```
 
 This matters because it does not search all previous history. It looks only at
-session files changed by the selected commit. That is why `pit log HEAD` shows
+session files changed by the selected commit. That is why `pit show HEAD` shows
 only prompts attached to HEAD, not prompts from earlier commits.
 
 After it finds session paths, `read_session_from_commit()` reads each file from

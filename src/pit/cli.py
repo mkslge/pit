@@ -110,21 +110,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     capture_parser.set_defaults(func=cmd_capture)
 
-    log_parser = subparsers.add_parser(
-        "log",
-        help="show commits that include pit prompt sessions",
-        description=(
-            "List commits that include .pit/sessions/*.json files, or show "
-            "the prompts attached to one commit."
-        ),
-    )
-    log_parser.add_argument(
-        "commit",
-        nargs="?",
-        help="optional commit whose attached prompts should be shown",
-    )
-    log_parser.set_defaults(func=cmd_log)
-
     show_parser = subparsers.add_parser(
         "show",
         help="show prompt history attached to a commit",
@@ -228,37 +213,6 @@ def cmd_capture(_args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_log(args: argparse.Namespace) -> int:
-    paths = discover_paths()
-
-    if args.commit:
-        return print_commit_prompts(paths, args.commit)
-
-    output = run_git(
-        ["log", "--format=%H%x09%s", "--", ".pit/sessions"],
-        cwd=paths.repo_root,
-    )
-    if not output:
-        print("No pit sessions found.")
-        return 0
-
-    printed = False
-    for line in output.splitlines():
-        commit, subject = split_commit_log_line(line)
-        sessions = read_sessions_from_commit(paths, commit)
-        for _session_path, session in sessions:
-            session_id = session.get("session_id", "unknown")
-            prompt_count = len(session.get("prompts", []))
-            print(f"{commit[:7]} {subject}")
-            print(f"  pit session: {session_id}")
-            print(f"  prompts: {prompt_count}")
-            printed = True
-
-    if not printed:
-        print("No pit sessions found.")
-    return 0
-
-
 def cmd_show(args: argparse.Namespace) -> int:
     paths = discover_paths()
     return print_commit_prompts(paths, args.commit)
@@ -288,7 +242,8 @@ def print_commit_prompts(paths: PitPaths, commit: str) -> int:
                 text = prompt.get("text", "")
             else:
                 text = ""
-            print(f"{prompt_index}. {text}")
+            print(f"\n--- Prompt {prompt_index} ---")
+            print(text)
     return 0
 
 
@@ -386,13 +341,6 @@ def count_uncaptured_prompts(config: dict, state: dict, paths: PitPaths) -> int:
 
 def stage_file(paths: PitPaths, path: Path) -> None:
     run_git(["add", str(path.relative_to(paths.repo_root))], cwd=paths.repo_root)
-
-
-def split_commit_log_line(line: str) -> tuple[str, str]:
-    if "\t" not in line:
-        return line, ""
-    commit, subject = line.split("\t", 1)
-    return commit, subject
 
 
 def read_sessions_from_commit(paths: PitPaths, commit: str) -> list[tuple[Path, dict]]:

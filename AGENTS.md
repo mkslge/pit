@@ -168,18 +168,6 @@ Manually performs the same capture work that the `pre-commit` hook performs.
 
 This is useful for debugging, but should not be part of the normal user flow.
 
-`pit log`
-
-Shows commits that contain `.pit/sessions/*.json`.
-
-Example:
-
-```text
-a13f9c2 Fix buffer pool eviction
-  pit session: 2026-05-01_abc123
-  prompts: 2
-```
-
 `pit show <commit>`
 
 Shows the prompt history attached to a commit.
@@ -242,7 +230,7 @@ For `pit show`, detect session files added or modified in the selected commit, t
 git show <commit>:.pit/sessions/<session-file>
 ```
 
-For `pit log`, walk commits and list commits that touch `.pit/sessions/*.json`.
+Prompt inspection should go through `pit show <commit>`.
 
 For hook installation:
 

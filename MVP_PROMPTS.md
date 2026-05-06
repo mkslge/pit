@@ -258,7 +258,6 @@ Required smoke test:
 - make a normal git commit
 - verify .pit/sessions/*.json is committed
 - run pit show HEAD
-- run pit log
 - run a second commit with no new prompts
 - verify no extra session is created
 - simulate a failed commit and verify pending state is not promoted
@@ -271,38 +270,6 @@ Return:
 - any bugs fixed
 - remaining limitations
 - whether pit is usable to install locally
-```
-
-## Prompt 11: Commit-Scoped Prompt Log
-
-```text
-Read AGENTS.md, PLAN.md, README.md, and the current implementation. Add commit-scoped prompt inspection to `pit log`.
-
-Goal: `pit log <commit>` should show only the prompts attached to the specified commit.
-
-Background:
-- `pit show <commit>` currently shows prompt history for a commit.
-- `pit log` currently lists commits that include `.pit/sessions/*.json`.
-- For this iteration, add the user-facing shape `pit log <commit>` as a focused alias or mode for commit-scoped prompt output.
-
-Requirements:
-- update the CLI so `pit log` still works with no arguments
-- add optional `commit` argument to `pit log`
-- when a commit is provided, read only `.pit/sessions/*.json` files added or modified by that commit
-- print only prompts attached to that commit, not prompts from earlier or later commits
-- if the commit has no pit session file, print a clear no-session message and exit successfully
-- preserve existing `pit show <commit>` behavior unless there is a small helper refactor needed
-- do not change prompt capture, session file format, hook behavior, or state behavior
-- keep output human-readable and consistent with existing `pit show HEAD` prompt numbering
-
-After coding, test:
-- `pit log` still lists commits with pit sessions
-- `pit log HEAD` shows only prompts attached to HEAD
-- `pit log <older-commit>` shows only prompts attached to that older commit
-- `pit log <commit-without-session>` reports no pit prompt session for that commit
-- `pit show HEAD` still works
-
-Explain why this is commit-scoped and how it differs from plain `pit log`.
 ```
 
 ## Ongoing Prompt Template
