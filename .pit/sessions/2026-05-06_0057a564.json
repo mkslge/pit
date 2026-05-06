@@ -1,0 +1,18 @@
+{
+  "session_id": "2026-05-06_0057a564",
+  "captured_at": "2026-05-06T00:44:42Z",
+  "commit": null,
+  "tool": "codex",
+  "source": {
+    "type": "codex",
+    "path": "~/.codex/sessions"
+  },
+  "prompts": [
+    {
+      "id": "codex:019dfaa0-4d35-70a2-87ad-0c1f20708b4b:2026-05-06T00:43:33.154Z:0b53f7b048badd57:1073",
+      "timestamp": "2026-05-06T00:43:33.154Z",
+      "text": "# Context from my IDE setup:\n\n## Active file: src/pit/cli.py\n\n## Open tabs:\n- cli.py: src/pit/cli.py\n- git.py: src/pit/git.py\n- paths.py: src/pit/paths.py\n- prompts.py: src/pit/prompts.py\n- session.py: src/pit/session.py\n\n## My request for Codex:\nmake sure the readme has an example on how to use all relevant commands\n"
+    }
+  ],
+  "summary": ""
+}
