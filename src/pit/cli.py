@@ -113,7 +113,15 @@ def build_parser() -> argparse.ArgumentParser:
     log_parser = subparsers.add_parser(
         "log",
         help="show commits that include pit prompt sessions",
-        description="List commits that include .pit/sessions/*.json files.",
+        description=(
+            "List commits that include .pit/sessions/*.json files, or show "
+            "the prompts attached to one commit."
+        ),
+    )
+    log_parser.add_argument(
+        "commit",
+        nargs="?",
+        help="optional commit whose attached prompts should be shown",
     )
     log_parser.set_defaults(func=cmd_log)
 
@@ -220,8 +228,12 @@ def cmd_capture(_args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_log(_args: argparse.Namespace) -> int:
+def cmd_log(args: argparse.Namespace) -> int:
     paths = discover_paths()
+
+    if args.commit:
+        return print_commit_prompts(paths, args.commit)
+
     output = run_git(
         ["log", "--format=%H%x09%s", "--", ".pit/sessions"],
         cwd=paths.repo_root,
@@ -249,7 +261,10 @@ def cmd_log(_args: argparse.Namespace) -> int:
 
 def cmd_show(args: argparse.Namespace) -> int:
     paths = discover_paths()
-    commit = args.commit
+    return print_commit_prompts(paths, args.commit)
+
+
+def print_commit_prompts(paths: PitPaths, commit: str) -> int:
     commit_info = run_git(["show", "-s", "--format=%h %s", commit], cwd=paths.repo_root)
     sessions = read_sessions_from_commit(paths, commit)
 

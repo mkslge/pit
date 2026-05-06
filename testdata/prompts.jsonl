@@ -1,2 +1,0 @@
-{"id":"prompt_001","timestamp":"2026-05-01T20:16:00Z","text":"Fix the LRU eviction bug in BufferPoolManager"}
-{"id":"prompt_002","timestamp":"2026-05-01T20:24:00Z","text":"Add tests for dirty page eviction"}
